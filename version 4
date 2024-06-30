@@ -1,0 +1,166 @@
+"""
+Juego de Plataformas
+"""
+import arcade
+
+# Constantes
+ANCHO_PANTALLA = 1000
+ALTO_PANTALLA = 650
+TITULO_PANTALLA = "Juego de Plataformas"
+
+# Constantes para escalar nuestros sprites desde su tamaño original
+ESCALA_JUGADOR = 1
+ESCALA_TILE = 0.5
+ESCALA_MONEDA = 0.5
+
+# Velocidad de movimiento del jugador, en píxeles por frame
+VELOCIDAD_MOVIMIENTO_JUGADOR = 5
+
+# Constantes de gravedad y salto
+GRAVEDAD = 1
+VELOCIDAD_SALTO_JUGADOR = 20
+
+
+class MiJuego(arcade.Window):
+    """
+    Clase principal de la aplicación.
+    """
+
+    def __init__(self):
+        # Llama a la clase padre y configura la ventana
+        super().__init__(ANCHO_PANTALLA, ALTO_PANTALLA, TITULO_PANTALLA)
+
+        # Nuestro objeto de escena
+        self.escena = None
+
+        # Variable separada que contiene el sprite del jugador
+        self.sprite_jugador = None
+
+        # Nuestro motor de física
+        self.motor_fisica = None
+
+        # Cámara para desplazar la pantalla
+        self.camara = None
+
+        # Cargar sonidos
+        self.sonido_recoger_moneda = arcade.load_sound(":resources:sounds/coin1.wav")
+        self.sonido_salto = arcade.load_sound(":resources:sounds/jump1.wav")
+
+        arcade.set_background_color(arcade.csscolor.CORNFLOWER_BLUE)
+
+    def setup(self):
+        """Configura el juego aquí. Llama a esta función para reiniciar el juego."""
+        # Configura la cámara
+        self.camara = arcade.Camera(self.width, self.height)
+        # Inicializa la escena
+        self.escena = arcade.Scene()
+
+        # Crea las listas de sprites en la escena
+        self.escena.add_sprite_list("Jugador")
+        self.escena.add_sprite_list("Muros", use_spatial_hash=True)
+
+        # Configura al jugador, colocándolo específicamente en estas coordenadas.
+        fuente_imagen = ":resources:images/animated_characters/female_adventurer/femaleAdventurer_idle.png"
+        self.sprite_jugador = arcade.Sprite(fuente_imagen, ESCALA_JUGADOR)
+        self.sprite_jugador.center_x = 64
+        self.sprite_jugador.center_y = 128
+        self.escena.add_sprite("Jugador", self.sprite_jugador)
+
+        # Crea el suelo
+        # Esto muestra cómo usar un bucle para colocar múltiples sprites horizontalmente
+        for x in range(0, 1250, 64):
+            muro = arcade.Sprite(":resources:images/tiles/grassMid.png", ESCALA_TILE)
+            muro.center_x = x
+            muro.center_y = 32
+            self.escena.add_sprite("Muros", muro)
+
+        # Coloca algunas cajas en el suelo
+        # Esto muestra cómo usar una lista de coordenadas para colocar sprites
+        lista_coordenadas = [[512, 96], [256, 96], [768, 96]]
+        for coordenada in lista_coordenadas:
+            # Agrega una caja en el suelo
+            muro = arcade.Sprite(
+                ":resources:images/tiles/boxCrate_double.png", ESCALA_TILE
+            )
+            muro.position = coordenada
+            self.escena.add_sprite("Muros", muro)
+
+        # Usa un bucle para colocar algunas monedas para que nuestro personaje las recoja
+        for x in range(128, 1250, 256):
+            moneda = arcade.Sprite(":resources:images/items/coinGold.png", ESCALA_MONEDA)
+            moneda.center_x = x
+            moneda.center_y = 96
+            self.escena.add_sprite("Monedas", moneda)    
+
+        # Crear el 'motor de física'
+        self.motor_fisica = arcade.PhysicsEnginePlatformer(
+            self.sprite_jugador, gravity_constant=GRAVEDAD, walls=self.escena["Muros"]
+        )
+
+    def on_draw(self):
+        """Renderiza la pantalla."""
+        # Limpia la pantalla al color de fondo
+        self.clear()
+        # Activa nuestra cámara
+        self.camara.use()
+        # Dibuja nuestra escena
+        self.escena.draw()
+
+    def on_key_press(self, key, modifiers):
+        """Llamado cada vez que se presiona una tecla."""
+        if key == arcade.key.UP or key == arcade.key.W:
+            if self.motor_fisica.can_jump():
+                self.sprite_jugador.change_y = VELOCIDAD_SALTO_JUGADOR
+                arcade.play_sound(self.sonido_salto)
+        elif key == arcade.key.LEFT or key == arcade.key.A:
+            self.sprite_jugador.change_x = -VELOCIDAD_MOVIMIENTO_JUGADOR
+        elif key == arcade.key.RIGHT or key == arcade.key.D:
+            self.sprite_jugador.change_x = VELOCIDAD_MOVIMIENTO_JUGADOR
+
+    def on_key_release(self, key, modifiers):
+        """Llamado cuando el usuario suelta una tecla."""
+        if key == arcade.key.LEFT or key == arcade.key.A:
+            self.sprite_jugador.change_x = 0
+        elif key == arcade.key.RIGHT or key == arcade.key.D:
+            self.sprite_jugador.change_x = 0
+    
+    def center_camera_to_player(self):
+        """Centrar la cámara en el jugador"""
+        centro_pantalla_x = self.sprite_jugador.center_x - (self.camara.viewport_width / 2)
+        centro_pantalla_y = self.sprite_jugador.center_y - (self.camara.viewport_height / 2)
+
+        # No dejar que la cámara viaje más allá de 0
+        if centro_pantalla_x < 0:
+            centro_pantalla_x = 0
+        if centro_pantalla_y < 0:
+            centro_pantalla_y = 0
+
+        centrado_jugador = centro_pantalla_x, centro_pantalla_y
+        self.camara.move_to(centrado_jugador)
+
+    def on_update(self, delta_time):
+        """Movimiento y lógica del juego"""
+        # Mueve al jugador con el motor de física
+        self.motor_fisica.update()
+         # Ver si golpeamos alguna moneda
+        lista_monedas_golpeadas = arcade.check_for_collision_with_list(self.sprite_jugador, self.escena["Monedas"])
+        # Recorre cada moneda que golpeamos (si es que hay alguna) y elimínala
+        for moneda in lista_monedas_golpeadas:
+            # Elimina la moneda
+            moneda.remove_from_sprite_lists()
+            # Reproduce un sonido
+            arcade.play_sound(self.sonido_recoger_moneda)
+        # Posicionar la cámara
+        self.center_camera_to_player()
+
+
+
+def main():
+    """Función principal"""
+    ventana = MiJuego()
+    ventana.setup()
+    arcade.run()
+
+
+if __name__ == "__main__":
+    main()
